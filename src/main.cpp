@@ -20,10 +20,11 @@ CRGBArray<NUM_LEDS> leds;   // LED陣列
 // ========== 變數 ==========
 unsigned long lastVibrationTime = 0;
 unsigned long vibrationCooldown = 500;
-int brightnesLevel = 0;
+int brightnessLevel = 0;
 int animationMode = 0;
 unsigned long animationTimer = 0;
 bool autoMode = true;  // 自動模式（由震動觸發）
+CRGB pulseColor = CRGB::Cyan;  // 脈衝模式顏色
 
 // ========== Web服務器 ==========
 ESP8266WebServer server(80);
@@ -40,8 +41,10 @@ void initWiFi();
 void handleRoot();
 void handleAPI();
 void handleSetMode();
+void handleSetBrightness();
 void handleSetColor();
 void handleToggleAuto();
+void handleClearLEDs();
 
 // ========== HTML前端 ==========
 const char* htmlPage = R"rawliteral(
@@ -235,6 +238,17 @@ const char* htmlPage = R"rawliteral(
     </div>
     
     <div class="control-section">
+      <div class="section-title" id="colorTitle">Color (Pulse Mode)</div>
+      <div style="display: flex; gap: 10px; align-items: center;">
+        <input type="color" id="colorPicker" value="#00ffff" onchange="updateColor()" style="width: 50px; height: 40px; border: none; border-radius: 4px; cursor: pointer;">
+        <div style="flex: 1;">
+          <div style="font-size: 12px; color: #666; margin-bottom: 5px;">R: <span id="colorR">0</span> G: <span id="colorG">255</span> B: <span id="colorB">255</span></div>
+          <input type="text" id="colorHex" value="#00ffff" onchange="updateColorFromHex()" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 12px;">
+        </div>
+      </div>
+    </div>
+    
+    <div class="control-section">
       <div class="section-title" id="autoModeTitle">Auto Mode</div>
       <div class="toggle">
         <span id="vibrationLabel">Vibration Trigger</span>
@@ -263,6 +277,7 @@ const char* htmlPage = R"rawliteral(
         'flash': 'Flash',
         'pulse': 'Pulse',
         'brightness': 'Brightness:',
+        'colorTitle': 'Color (Pulse Mode)',
         'autoMode': 'Auto Mode',
         'vibrationTrigger': 'Vibration Trigger',
         'clearLEDs': 'Clear All LEDs',
@@ -281,6 +296,7 @@ const char* htmlPage = R"rawliteral(
         'flash': '閃爍',
         'pulse': '脈衝',
         'brightness': '亮度:',
+        'colorTitle': '顏色（脈衝模式）',
         'autoMode': '自動模式',
         'vibrationTrigger': '震動觸發',
         'clearLEDs': '清空所有LED',
@@ -299,6 +315,7 @@ const char* htmlPage = R"rawliteral(
         'flash': '闪烁',
         'pulse': '脉冲',
         'brightness': '亮度:',
+        'colorTitle': '颜色（脉冲模式）',
         'autoMode': '自动模式',
         'vibrationTrigger': '振动触发',
         'clearLEDs': '清空所有LED',
@@ -325,6 +342,7 @@ const char* htmlPage = R"rawliteral(
       document.getElementById('flashBtn').textContent = t('flash');
       document.getElementById('pulseBtn').textContent = t('pulse');
       document.getElementById('brightnessLabel').textContent = t('brightness');
+      document.getElementById('colorTitle').textContent = t('colorTitle');
       document.getElementById('autoModeTitle').textContent = t('autoMode');
       document.getElementById('vibrationLabel').textContent = t('vibrationTrigger');
       document.getElementById('clearBtn').textContent = t('clearLEDs');
@@ -398,6 +416,42 @@ const char* htmlPage = R"rawliteral(
         .then(function(data) { alert(t('cleared')); });
     }
     
+    // Color functions
+    function hexToRgb(hex) {
+      var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+      } : { r: 0, g: 255, b: 255 };
+    }
+    
+    function rgbToHex(r, g, b) {
+      return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+    }
+    
+    function updateColor() {
+      var hex = document.getElementById('colorPicker').value;
+      var rgb = hexToRgb(hex);
+      document.getElementById('colorHex').value = hex;
+      document.getElementById('colorR').textContent = rgb.r;
+      document.getElementById('colorG').textContent = rgb.g;
+      document.getElementById('colorB').textContent = rgb.b;
+      
+      // Send to device
+      fetch('/api/setColor?r=' + rgb.r + '&g=' + rgb.g + '&b=' + rgb.b)
+        .then(function(r) { return r.json(); })
+        .catch(function(e) { console.log(e); });
+    }
+    
+    function updateColorFromHex() {
+      var hex = document.getElementById('colorHex').value;
+      if (hex.startsWith('#') && hex.length === 7) {
+        document.getElementById('colorPicker').value = hex;
+        updateColor();
+      }
+    }
+    
     // Initialize on page load
     window.onload = function() {
       detectLanguage();
@@ -431,8 +485,9 @@ void setup() {
   server.on("/", handleRoot);
   server.on("/api/status", handleAPI);
   server.on("/api/setMode", handleSetMode);
-  server.on("/api/setBrightness", handleSetColor);
-  server.on("/api/clear", handleToggleAuto);
+  server.on("/api/setBrightness", handleSetBrightness);
+  server.on("/api/setColor", handleSetColor);
+  server.on("/api/clear", handleClearLEDs);
   server.on("/api/toggleAuto", handleToggleAuto);
   server.begin();
   
@@ -494,30 +549,55 @@ void handleSetMode() {
   }
 }
 
-void handleSetColor() {
+void handleSetBrightness() {
   if (server.hasArg("value")) {
     int brightness = server.arg("value").toInt();
+    // 範圍校驗：0-255
+    if (brightness < 0) brightness = 0;
+    if (brightness > 255) brightness = 255;
     FastLED.setBrightness(brightness);
-    server.send(200, "application/json", "{\"status\":\"ok\"}");
+    FastLED.show();
+    Serial.print("💡 亮度設置: ");
+    Serial.println(brightness);
+    server.send(200, "application/json", "{\"status\":\"ok\",\"brightness\":" + String(brightness) + "}");
+  } else {
+    server.send(400, "application/json", "{\"error\":\"missing value parameter\"}");
   }
 }
 
-void handleToggleAuto() {
-  if (server.uri() == "/api/toggleAuto") {
-    autoMode = !autoMode;
-    Serial.print("🔄 自動模式: ");
-    Serial.println(autoMode ? "啟用" : "禁用");
-  } else if (server.uri() == "/api/clear") {
-    clearLEDs();
-    FastLED.show();
-    Serial.println("🟢 LED已清空");
+void handleSetColor() {
+  if (server.hasArg("r") && server.hasArg("g") && server.hasArg("b")) {
+    int r = constrain(server.arg("r").toInt(), 0, 255);
+    int g = constrain(server.arg("g").toInt(), 0, 255);
+    int b = constrain(server.arg("b").toInt(), 0, 255);
+    pulseColor = CRGB(r, g, b);
+    Serial.print("🎨 顏色設置 RGB(");
+    Serial.print(r); Serial.print(",");
+    Serial.print(g); Serial.print(",");
+    Serial.print(b); Serial.println(")");
+    server.send(200, "application/json", "{\"status\":\"ok\",\"color\":\"rgb(" + String(r) + "," + String(g) + "," + String(b) + ")\"}");
+  } else {
+    server.send(400, "application/json", "{\"error\":\"missing color parameters\"}");
   }
+}
+
+void handleClearLEDs() {
+  clearLEDs();
+  FastLED.show();
+  Serial.println("🟢 LED已清空");
   server.send(200, "application/json", "{\"status\":\"ok\"}");
+}
+
+void handleToggleAuto() {
+  autoMode = !autoMode;
+  Serial.print("🔄 自動模式: ");
+  Serial.println(autoMode ? "啟用" : "禁用");
+  server.send(200, "application/json", "{\"status\":\"ok\",\"autoMode\":" + String(autoMode) + "}");
 }
 
 void setAnimationMode(int mode) {
   animationMode = mode;
-  brightnesLevel = 255;
+  brightnessLevel = 255;
   animationTimer = millis();
   Serial.print("📺 模式切換: ");
   
@@ -531,22 +611,28 @@ void setAnimationMode(int mode) {
 void handleVibration() {
   Serial.println("✨ 偵測到震動！");
   animationMode = (animationMode + 1) % 3;
-  brightnesLevel = 255;
+  brightnessLevel = 255;
   animationTimer = millis();
 }
 
 void updateAnimation() {
   unsigned long elapsed = millis() - animationTimer;
-  int calcValue = (int)brightnesLevel - (elapsed / 20);
-  uint8_t brightness = (calcValue > 0) ? (uint8_t)calcValue : 0;
-  brightnesLevel = brightness;
   
   if (animationMode == 0) {
-    rainbowCycle(brightness);
+    rainbowCycle(255);
   } else if (animationMode == 1) {
     randomFlash();
   } else if (animationMode == 2) {
-    colorPulse(CRGB::Cyan, brightness);
+    // 脈衝模式：先保持2秒，然後逐漸淡出
+    unsigned long fadeStart = 2000;
+    if (elapsed > fadeStart) {
+      unsigned long fadeElapsed = elapsed - fadeStart;
+      int calcValue = 255 - (fadeElapsed / 10);
+      uint8_t brightness = max(0, min(255, calcValue));
+      colorPulse(pulseColor, brightness);
+    } else {
+      colorPulse(pulseColor, 255);
+    }
   }
 }
 
