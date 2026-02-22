@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Interactive Toy</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; justify-content: center; align-items: center; padding: 20px; }
+    .container { background: white; border-radius: 20px; padding: 30px; box-sizing: border-box; max-width: 400px; width: 100%; box-shadow: 0 10px 40px rgba(0,0,0,0.3); }
+    h1 { text-align: center; color: #333; margin-bottom: 20px; font-size: 28px; }
+    .lang-buttons { display: flex; gap: 8px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap; }
+    .lang-btn { padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px; background: #fff; cursor: pointer; font-size: 12px; font-weight: bold; transition: all 0.3s; }
+    .lang-btn.active { background: #667eea; color: white; border-color: #667eea; }
+    .lang-btn:hover { background: #f0f0f0; }
+    .mode-section { margin-bottom: 25px; }
+    .section-title { font-size: 14px; color: #666; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; font-weight: bold; }
+    .button-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+    button { padding: 12px 16px; border: none; border-radius: 8px; font-size: 14px; font-weight: bold; cursor: pointer; transition: all 0.3s ease; }
+    .mode-btn { background: #f0f0f0; color: #333; border: 2px solid #ddd; }
+    .mode-btn:hover { background: #e0e0e0; }
+    .mode-btn.active { background: #667eea; color: white; border-color: #667eea; }
+    .action-btn { background: #667eea; color: white; width: 100%; padding: 14px; }
+    .action-btn:hover { background: #5568d3; }
+    .control-section { background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
+    .slider-group { display: flex; align-items: center; gap: 10px; }
+    .slider-group label { min-width: 80px; font-size: 12px; }
+    input[type="range"] { flex: 1; height: 6px; border-radius: 3px; background: #ddd; }
+    .toggle { display: flex; align-items: center; justify-content: space-between; padding: 10px; background: white; border-radius: 6px; border: 1px solid #ddd; }
+    .toggle-switch { width: 50px; height: 28px; background: #ccc; border-radius: 14px; position: relative; cursor: pointer; transition: background 0.3s; }
+    .toggle-switch.active { background: #667eea; }
+    .toggle-switch::after { content: ''; position: absolute; width: 24px; height: 24px; background: white; border-radius: 50%; top: 2px; left: 2px; transition: left 0.3s; }
+    .toggle-switch.active::after { left: 24px; }
+    .status { background: #f0f7ff; padding: 15px; border-radius: 8px; border-left: 4px solid #667eea; margin-top: 20px; font-size: 13px; color: #555; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="lang-buttons">
+      <button class="lang-btn" onclick="setLanguage('en')">English</button>
+      <button class="lang-btn" onclick="setLanguage('zh-TW')">繁體中文</button>
+      <button class="lang-btn" onclick="setLanguage('zh-CN')">简体中文</button>
+    </div>
+    
+    <h1 id="title">Interactive Toy</h1>
+    
+    <div class="mode-section">
+      <div class="section-title" id="modeTitle">Animation Mode</div>
+      <div class="button-group">
+        <button class="mode-btn active" id="rainbowBtn" onclick="setMode(0)">Rainbow</button>
+        <button class="mode-btn" id="flashBtn" onclick="setMode(1)">Flash</button>
+        <button class="mode-btn" id="pulseBtn" onclick="setMode(2)">Pulse</button>
+      </div>
+    </div>
+    
+    <div class="control-section">
+      <div class="slider-group">
+        <label id="brightnessLabel">Brightness:</label>
+        <input type="range" id="brightness" min="0" max="255" value="255" onchange="updateBrightness()">
+        <span id="brightnessValue">255</span>
+      </div>
+    </div>
+    
+    <div class="control-section">
+      <div class="section-title" id="autoModeTitle">Auto Mode</div>
+      <div class="toggle">
+        <span id="vibrationLabel">Vibration Trigger</span>
+        <div class="toggle-switch active" id="autoToggle" onclick="toggleAutoMode()"></div>
+      </div>
+    </div>
+    
+    <button class="action-btn" id="clearBtn" onclick="clearAll()">Clear All LEDs</button>
+    
+    <div class="status">
+      <strong id="statusTitle">Status:</strong> <span id="statusConnected">Connected to WiFi</span><br>
+      <span id="modeStatus">Current Mode: Rainbow Cycle</span>
+    </div>
+  </div>
+
+  <script>
+    var currentMode = 0;
+    var currentLang = 'en';
+    var i18n = {
+      'en': {
+        'title': 'Interactive Toy',
+        'animationMode': 'Animation Mode',
+        'rainbow': 'Rainbow',
+        'flash': 'Flash',
+        'pulse': 'Pulse',
+        'brightness': 'Brightness:',
+        'autoMode': 'Auto Mode',
+        'vibrationTrigger': 'Vibration Trigger',
+        'clearLEDs': 'Clear All LEDs',
+        'status': 'Status:',
+        'connected': 'Connected to WiFi',
+        'currentMode': 'Current Mode: ',
+        'rainbowCycle': 'Rainbow Cycle',
+        'randomFlash': 'Random Flash',
+        'colorPulse': 'Color Pulse',
+        'cleared': 'LEDs cleared!'
+      },
+      'zh-TW': {
+        'title': '互動玩具',
+        'animationMode': '動畫模式',
+        'rainbow': '彩虹',
+        'flash': '閃爍',
+        'pulse': '脈衝',
+        'brightness': '亮度:',
+        'autoMode': '自動模式',
+        'vibrationTrigger': '震動觸發',
+        'clearLEDs': '清空所有LED',
+        'status': '狀態:',
+        'connected': '已連接至WiFi',
+        'currentMode': '當前模式: ',
+        'rainbowCycle': '彩虹循環',
+        'randomFlash': '隨機閃爍',
+        'colorPulse': '顏色脈衝',
+        'cleared': 'LED已清空！'
+      },
+      'zh-CN': {
+        'title': '互动玩具',
+        'animationMode': '动画模式',
+        'rainbow': '彩虹',
+        'flash': '闪烁',
+        'pulse': '脉冲',
+        'brightness': '亮度:',
+        'autoMode': '自动模式',
+        'vibrationTrigger': '振动触发',
+        'clearLEDs': '清空所有LED',
+        'status': '状态:',
+        'connected': '已连接至WiFi',
+        'currentMode': '当前模式: ',
+        'rainbowCycle': '彩虹循环',
+        'randomFlash': '随机闪烁',
+        'colorPulse': '颜色脉冲',
+        'cleared': 'LED已清空！'
+      }
+    };
+
+    function t(key) {
+      return i18n[currentLang][key] || i18n['en'][key] || key;
+    }
+
+    function detectLanguage() {
+      var browserLang = navigator.language || navigator.userLanguage;
+      if (browserLang.indexOf('zh-Hans') !== -1 || browserLang === 'zh-CN') {
+        currentLang = 'zh-CN';
+      } else if (browserLang.indexOf('zh') !== -1) {
+        currentLang = 'zh-TW';
+      } else {
+        currentLang = 'en';
+      }
+    }
+
+    function updateUI() {
+      document.getElementById('title').textContent = t('title');
+      document.getElementById('modeTitle').textContent = t('animationMode');
+      document.getElementById('rainbowBtn').textContent = t('rainbow');
+      document.getElementById('flashBtn').textContent = t('flash');
+      document.getElementById('pulseBtn').textContent = t('pulse');
+      document.getElementById('brightnessLabel').textContent = t('brightness');
+      document.getElementById('autoModeTitle').textContent = t('autoMode');
+      document.getElementById('vibrationLabel').textContent = t('vibrationTrigger');
+      document.getElementById('clearBtn').textContent = t('clearLEDs');
+      document.getElementById('statusTitle').textContent = t('status');
+      document.getElementById('statusConnected').textContent = t('connected');
+      
+      var modes = [t('rainbowCycle'), t('randomFlash'), t('colorPulse')];
+      document.getElementById('modeStatus').textContent = t('currentMode') + modes[currentMode];
+      
+      var langBtns = document.querySelectorAll('.lang-btn');
+      for (var i = 0; i < langBtns.length; i++) langBtns[i].classList.remove('active');
+      if (currentLang === 'en') langBtns[0].classList.add('active');
+      else if (currentLang === 'zh-TW') langBtns[1].classList.add('active');
+      else if (currentLang === 'zh-CN') langBtns[2].classList.add('active');
+    }
+
+    function setLanguage(lang) {
+      currentLang = lang;
+      updateUI();
+    }
+
+    function setMode(mode) {
+      currentMode = mode;
+      var modes = [t('rainbowCycle'), t('randomFlash'), t('colorPulse')];
+      document.getElementById('modeStatus').textContent = t('currentMode') + modes[mode];
+      var buttons = document.querySelectorAll('.mode-btn');
+      for (var i = 0; i < buttons.length; i++) buttons[i].classList.remove('active');
+      buttons[mode].classList.add('active');
+    }
+
+    function updateBrightness() {
+      var val = document.getElementById('brightness').value;
+      document.getElementById('brightnessValue').textContent = val;
+    }
+
+    function toggleAutoMode() {
+      document.getElementById('autoToggle').classList.toggle('active');
+    }
+
+    function clearAll() {
+      alert(t('cleared'));
+    }
+
+    // Initialize on page load
+    window.onload = function() {
+      detectLanguage();
+      updateUI();
+    };
+  </script>
+</body>
+</html>
