@@ -7,17 +7,9 @@
   <br/>
 </p>
 
-# funXtoy - 互動LED玩具控制系統
-
-<p align="center">
-  <strong>智慧化互動玩具 | 多彩LED動畫 | 震動感應控制 | 網頁遠端操控</strong>
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/Platform-ESP8266-blue" alt="Platform">
-  <img src="https://img.shields.io/badge/Framework-Arduino-brightgreen" alt="Framework">
-  <img src="https://img.shields.io/badge/License-MIT-green" alt="License">
-  <img src="https://img.shields.io/badge/Language-C%2B%2B-orange" alt="Language">
+# funXtoy1 - 互動LED玩具
+<p>
+  <strong>低成本、DIY（自己動手做）的多彩LED互動玩具項目，專為教育用途設計。</strong>
 </p>
 
 ---
@@ -36,6 +28,7 @@
 
 ---
 
+
 ## 🎯 功能特點
 
 ### 🌈 多彩動畫效果
@@ -50,22 +43,11 @@
 - **自動模式** - 支援自動和手動雙模式
 - **亮度調節** - 0-255等級的無段亮度控制
 
-### 🎨 顏色自訂
-- **色彩選擇器** - 直觀的網頁色彩選擇介面
-- **RGB 輸入** - 精確的 R/G/B 數值設定
-- **十六進制支援** - 支援 #RRGGBB 格式
-
 ### 🌍 多語言支援
 - **英語** English
 - **繁體中文** 繁體中文
 - **簡體中文** 简体中文
 - 自動語言檢測 + 手動選擇
-
-### 📊 實時回饋
-- 動畫模式實時顯示
-- 亮度數值即時反映
-- WiFi 連線狀態監控
-- Serial 控制台詳細日誌
 
 ---
 
@@ -84,8 +66,16 @@
 |------|------|------|
 | **LED 燈帶** | WS2812B (5V) | 8個LED |
 | **震動感應器** | 震動開關傳感器 | 1個 |
-| **USB 電源** | 5V 1A 以上 | 1個 |
-| **Micro USB 線** | 程序下載 | 1個 |
+| **穩壓模組** | 1.8V-5V轉3.3V穩壓模組 | 1個 |
+| **電池** | 3.7V 鋰電池 | 1個 |
+| **充電模組** | 1S USB充電模組 | 1個 |
+
+### 所需工具
+* `3D列印機`: 用於製作外型
+* `燒錄器`: 用於燒錄韌體
+* `USB 訊號線`: 用於程序下載
+* `焊接工具`: 用於製作電路板
+* `熱熔膠槍`: 用於固定電路板
 
 ### 連線圖
 ```
@@ -98,50 +88,23 @@ ESP01S GND   → 震動感應器 + 燈帶 (GND)
 
 ---
 
-## 💻 軟體要求
+## 💻 燒錄韌體
 
-### 開發環境
-- **IDE**: Visual Studio Code
-- **平台**: PlatformIO for VSCode
-- **框架**: Arduino Framework
-- **Python**: 3.8+ (用於本地測試)
+    * 下載韌體檔案 [ `firmware.bin` ](firmware/firmware.bin)
+    * 將`ESP01S模組`正確放入 `燒錄器` 中 ![](firmware/programmer.jpg) (如果使用 `USB to TTL` 或 `開發板` 當燒錄器，請確保接線和電壓正確)
 
-### 必需庫
-```ini
-lib_deps = 
-    fastled/FastLED@^3.10.3
-    ESP8266WiFi @ 1.0
-    ESP8266WebServer @ 1.0
-```
+    * 以 `USB 訊號線` (不是充電線) 連接 `電腦` 和 `燒錄器` 
+    * 點選進入 [`燒錄工具網頁版`](https://espressif.github.io/esptool-js/)
+    * 點選網頁 `Connect` 按鈕，選擇正確的`USB端口` 後點選 `連線`
+    * `Flash Address` 設為 `0x0`
+    * 點選 `選擇檔案` 按鈕後選擇之前下載的韌體檔 `firmware.bin`
+    * 點選網頁 `Program` 按鈕後開始燒錄韌體
+    * 燒錄完成後點選網頁 `Disconnect` 按鈕
+    * 拔除 `USB` 線後取下 `ESP01S模組`
 
----
 
-## 🚀 快速開始
 
-### 1️⃣ 安裝 VSCode 和 PlatformIO
-```bash
-pip install platformio
-```
-
-### 2️⃣ 克隆專案
-```bash
-git clone https://github.com/robot4fun/funXtoy1.git
-cd funXtoy1
-```
-
-### 3️⃣ 編譯和上傳
-```bash
-# 編譯
-platformio run
-
-# 上傳到 ESP01S
-platformio run -t upload
-
-# 監控 Serial 輸出
-platformio device monitor --baud 115200
-```
-
-### 4️⃣ 連接 WiFi
+## 4️⃣ 連接 WiFi
 1. 設備上電後，自動啟動 WiFi AP 模式
 2. 搜尋 WiFi 網絡：`funXtoy_XXXXXX`
 3. 密碼：`123456`
@@ -173,7 +136,7 @@ GND → GND (共地)
 platformio run
 
 # 2. 連接 ESP01S
-# (按住 IO0 按鈕進入燒錄模式)
+# (IO0 接地進入燒錄模式)
 
 # 3. 上傳
 platformio run -t upload
@@ -317,6 +280,7 @@ curl "http://192.168.4.1/api/setColor?r=255&g=0&b=0"
 
 ```
 funXtoy1/
+├── firmware/firmware.bin     # 韌體檔
 ├── src/main.cpp              # 主程序
 ├── platformio.ini            # 配置文件
 ├── preview.html              # 獨立測試頁面
@@ -335,6 +299,5 @@ in the Software without restriction...
 
 ---
 
-**版本**: 1.0.0  
-**更新日期**: 2026年2月22日  
-**狀態**: ✅ 生產就緒
+**版本**: 0.1.0  
+**更新日期**: 2026年2月22日
