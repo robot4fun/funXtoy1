@@ -35,6 +35,7 @@ void updateAnimation();
 void rainbowCycle(uint8_t brightness);
 void colorPulse(CRGB color, uint8_t brightness);
 void randomFlash();
+void chaseAnimation();
 void clearLEDs();
 void setAnimationMode(int mode);
 void initWiFi();
@@ -212,8 +213,22 @@ const char* htmlPage = R"rawliteral(
 </head>
 <body>
   <div class="container">
+    <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 20px;">
+      <svg width="120" height="50" viewBox="0 0 240 100" style="margin-right: 10px;">
+        <!-- f (Blue) -->
+        <text x="5" y="70" font-size="60" font-weight="bold" fill="#4169E1" font-family="Arial">f</text>
+        <!-- u (Green) -->
+        <text x="26" y="70" font-size="60" font-weight="bold" fill="#00CD00" font-family="Arial">u</text>
+        <!-- n (Yellow) -->
+        <text x="61" y="70" font-size="60" font-weight="bold" fill="#FFD700" font-family="Arial">n</text>
+        <!-- X (Red) -->
+        <text x="96" y="70" font-size="70" font-weight="bold" fill="#DC143C" font-family="Arial">X</text>
+        <!-- edu (Black) -->
+        <text x="142" y="70" font-size="60" font-weight="bold" fill="#000000" font-family="Arial">edu</text>
+      </svg>
+    </div>
     <div class="lang-buttons">
-      <button class="lang-btn active" onclick="setLanguage('en')">English</button>
+      <button class="lang-btn" onclick="setLanguage('en')">English</button>
       <button class="lang-btn" onclick="setLanguage('zh-TW')">繁體中文</button>
       <button class="lang-btn" onclick="setLanguage('zh-CN')">简体中文</button>
     </div>
@@ -226,6 +241,7 @@ const char* htmlPage = R"rawliteral(
         <button class="mode-btn active" id="rainbowBtn" onclick="setMode(0)">Rainbow</button>
         <button class="mode-btn" id="flashBtn" onclick="setMode(1)">Flash</button>
         <button class="mode-btn" id="pulseBtn" onclick="setMode(2)">Pulse</button>
+        <button class="mode-btn" id="chaseBtn" onclick="setMode(3)">Chase</button>
       </div>
     </div>
     
@@ -287,6 +303,7 @@ const char* htmlPage = R"rawliteral(
         'rainbowCycle': 'Rainbow Cycle',
         'randomFlash': 'Random Flash',
         'colorPulse': 'Color Pulse',
+        'chase': 'Chase',
         'cleared': 'LEDs cleared!'
       },
       'zh-TW': {
@@ -306,6 +323,7 @@ const char* htmlPage = R"rawliteral(
         'rainbowCycle': '彩虹循環',
         'randomFlash': '隨機閃爍',
         'colorPulse': '顏色脈衝',
+        'chase': '跑馬燈',
         'cleared': 'LED已清空！'
       },
       'zh-CN': {
@@ -325,6 +343,7 @@ const char* htmlPage = R"rawliteral(
         'rainbowCycle': '彩虹循环',
         'randomFlash': '随机闪烁',
         'colorPulse': '颜色脉冲',
+        'chase': '跑马灯',
         'cleared': 'LED已清空！'
       }
     };
@@ -341,6 +360,7 @@ const char* htmlPage = R"rawliteral(
       document.getElementById('rainbowBtn').textContent = t('rainbow');
       document.getElementById('flashBtn').textContent = t('flash');
       document.getElementById('pulseBtn').textContent = t('pulse');
+      document.getElementById('chaseBtn').textContent = t('chase');
       document.getElementById('brightnessLabel').textContent = t('brightness');
       document.getElementById('colorTitle').textContent = t('colorTitle');
       document.getElementById('autoModeTitle').textContent = t('autoMode');
@@ -605,6 +625,7 @@ void setAnimationMode(int mode) {
     case 0: Serial.println("彩虹循環"); break;
     case 1: Serial.println("隨機閃爍"); break;
     case 2: Serial.println("顏色脈衝"); break;
+    case 3: Serial.println("跑馬燈"); break;
   }
 }
 
@@ -633,6 +654,8 @@ void updateAnimation() {
     } else {
       colorPulse(pulseColor, 255);
     }
+  } else if (animationMode == 3) {
+    chaseAnimation();
   }
 }
 
@@ -649,6 +672,29 @@ void randomFlash() {
   for (int i = 0; i < NUM_LEDS; i++) {
     leds[i] = CRGB(random(255), random(255), random(255));
   }
+}
+
+void chaseAnimation() {
+  static uint8_t position = 0;
+  static unsigned long lastUpdate = 0;
+  unsigned long now = millis();
+  
+  // 每100ms更新一次位置
+  if (now - lastUpdate > 100) {
+    position = (position + 1) % NUM_LEDS;
+    lastUpdate = now;
+  }
+  
+  // 清空所有LED
+  for (int i = 0; i < NUM_LEDS; i++) {
+    leds[i] = CRGB::Black;
+  }
+  
+  // 繪製跑馬燈：當前位置是亮的顏色，後面3個LED逐漸淡出
+  leds[position] = pulseColor;
+  if (position > 0) leds[position - 1] = CRGB(pulseColor.r / 2, pulseColor.g / 2, pulseColor.b / 2);
+  if (position > 1) leds[position - 2] = CRGB(pulseColor.r / 4, pulseColor.g / 4, pulseColor.b / 4);
+  if (position > 2) leds[position - 3] = CRGB(pulseColor.r / 8, pulseColor.g / 8, pulseColor.b / 8);
 }
 
 void colorPulse(CRGB color, uint8_t brightness) {
