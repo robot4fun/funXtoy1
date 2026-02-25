@@ -4,11 +4,11 @@
 #include <ESP8266WebServer.h>
 
 // ========== WiFi 配置 ==========
-#define TOY_SSID "funXtoy"  // WiFi名稱
-#define TOY_PWD "123456"    // WiFi密碼（至少8位）
+#define TOY_SSID "funXled"  // WiFi名稱
+#define TOY_PWD "12345678"    // WiFi密碼（至少8位）
 
 // ========== LED配置 (ESP01S只有GPIO0和GPIO2可用) ==========
-#define LED_PIN 2           // GPIO2 - WS2812燈帶
+#define LED_PIN 2           // GPIO2 - 內建LED, 和WS2812燈帶共用
 #define NUM_LEDS 8          // 8個LED
 #define COLOR_ORDER GRB     // WS2812色序
 #define CHIPSET WS2812B     // LED晶片類型
@@ -16,15 +16,30 @@ CRGBArray<NUM_LEDS> leds;   // LED陣列
 
 // ========== 震動感應器配置 ==========
 #define VIBRATION_PIN 0     // GPIO0 - 震動感應器
+#define VIBRATION_THRESHOLD 600 // 震動觸發閾值 (根據實際情況調整)
 
 // ========== 變數 ==========
 unsigned long lastVibrationTime = 0;
-unsigned long vibrationCooldown = 500;
 int brightnessLevel = 0;
 int animationMode = 0;
 unsigned long animationTimer = 0;
 bool autoMode = true;  // 自動模式（由震動觸發）
 CRGB pulseColor = CRGB::Cyan;  // 脈衝模式顏色
+
+// ========== 呼吸燈模式（animationMode = 2）==========
+CRGB breathingColors[] = {CRGB::Cyan, CRGB::Magenta, CRGB::Yellow, CRGB::Green, CRGB::Blue, CRGB::Red};
+const int numBreathingColors = sizeof(breathingColors) / sizeof(breathingColors[0]);
+int currentColorIndex = 0;           // 目前色彩索引
+CRGB currentAnimColor = CRGB::Cyan;  // 目前動畫色彩（支援插值）
+CRGB nextAnimColor = CRGB::Magenta;  // 下一個目標色彩
+unsigned long breathingCycleCount = 0; // 呼吸循環次數
+const unsigned long colorSwitchCycles = 3; // 每 3 個循環切換一次色彩
+unsigned long colorTransitionFrames = 0; // 色彩漸層進度（每個 50ms 呼吸更新一次）
+const unsigned long colorTransitionDuration = 20; // 色彩過渡持續 20 個呼吸週期（~1秒）
+
+// ========== 閒置/睡眠管理 ==========
+unsigned long lastActivity = 0;       // 最後活動時間（ms）
+unsigned long idleTimeout = 300000;   // 閒置超時 ms (預設 300000ms = 5 分鐘)
 
 // ========== Web服務器 ==========
 ESP8266WebServer server(80);
@@ -32,6 +47,8 @@ ESP8266WebServer server(80);
 // ========== 函數聲明 ==========
 void handleVibration();
 void updateAnimation();
+void breathingLight();
+CRGB lerpColor(CRGB from, CRGB to, uint16_t t, uint16_t max_t);
 void rainbowCycle(uint8_t brightness);
 void colorPulse(CRGB color, uint8_t brightness);
 void randomFlash();
@@ -46,6 +63,8 @@ void handleSetBrightness();
 void handleSetColor();
 void handleToggleAuto();
 void handleClearLEDs();
+void resetIdleTimer();
+void enterDeepSleep();
 
 // ========== HTML前端 ==========
 const char* htmlPage = R"rawliteral(
@@ -54,7 +73,7 @@ const char* htmlPage = R"rawliteral(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Interactive Toy Control Panel</title>
+  <title>Interactive LED</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -214,7 +233,7 @@ const char* htmlPage = R"rawliteral(
 <body>
   <div class="container">
     <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 20px;">
-      <svg width="120" height="50" viewBox="0 0 240 100" style="margin-right: 10px;">
+      <svg width="160" height="50" viewBox="0 0 240 100" style="margin-right: 10px;">
         <!-- f (Blue) -->
         <text x="5" y="70" font-size="60" font-weight="bold" fill="#4169E1" font-family="Arial">f</text>
         <!-- u (Green) -->
@@ -232,9 +251,7 @@ const char* htmlPage = R"rawliteral(
       <button class="lang-btn" onclick="setLanguage('zh-TW')">繁體中文</button>
       <button class="lang-btn" onclick="setLanguage('zh-CN')">简体中文</button>
     </div>
-    
-    <h1>Interactive Toy</h1>
-    
+        
     <div class="mode-section">
       <div class="section-title" id="modeTitle">Animation Mode</div>
       <div class="button-group">
@@ -287,7 +304,7 @@ const char* htmlPage = R"rawliteral(
     // Multi-language translations
     var i18n = {
       'en': {
-        'title': 'Interactive Toy',
+        'title': 'Interactive LED',
         'animationMode': 'Animation Mode',
         'rainbow': 'Rainbow',
         'flash': 'Flash',
@@ -307,7 +324,7 @@ const char* htmlPage = R"rawliteral(
         'cleared': 'LEDs cleared!'
       },
       'zh-TW': {
-        'title': '互動玩具',
+        'title': '互動LED玩具',
         'animationMode': '動畫模式',
         'rainbow': '彩虹',
         'flash': '閃爍',
@@ -327,7 +344,7 @@ const char* htmlPage = R"rawliteral(
         'cleared': 'LED已清空！'
       },
       'zh-CN': {
-        'title': '互动玩具',
+        'title': '互动LED玩具',
         'animationMode': '动画模式',
         'rainbow': '彩虹',
         'flash': '闪烁',
@@ -488,16 +505,6 @@ void setup() {
   
   Serial.println("\n\n========== 互動玩具初始化 ==========");
   
-  // LED初始化
-  FastLED.addLeds<CHIPSET, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS);
-  FastLED.setBrightness(255);
-  FastLED.setDither(BINARY_DITHER);
-  clearLEDs();
-  FastLED.show();
-  
-  // 震動感應器初始化
-  pinMode(VIBRATION_PIN, INPUT);
-  
   // WiFi初始化
   initWiFi();
   
@@ -516,6 +523,18 @@ void setup() {
   Serial.print(WiFi.softAPIP());
   Serial.println("/");
   Serial.println("===================================\n");
+
+  // LED初始化
+  FastLED.addLeds<CHIPSET, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS);
+  FastLED.setBrightness(255);
+  FastLED.setDither(BINARY_DITHER);
+  clearLEDs();
+  FastLED.show();
+  
+  // 震動感應器初始化
+  pinMode(VIBRATION_PIN, INPUT);
+  // 初始化閒置計時
+  resetIdleTimer();
 }
 
 void loop() {
@@ -523,9 +542,9 @@ void loop() {
   server.handleClient();
   
   // 檢測震動
-  if (autoMode && digitalRead(VIBRATION_PIN) == HIGH) {
+  if (autoMode && digitalRead(VIBRATION_PIN) == LOW) {
     unsigned long currentTime = millis();
-    if (currentTime - lastVibrationTime > vibrationCooldown) {
+    if (currentTime - lastVibrationTime > VIBRATION_THRESHOLD) {
       handleVibration();
       lastVibrationTime = currentTime;
     }
@@ -535,31 +554,66 @@ void loop() {
   updateAnimation();
   
   FastLED.show();
+  // 檢查是否閒置超時，進入深度睡眠
+  if (idleTimeout > 0 && (millis() - lastActivity) > idleTimeout) {
+    Serial.println("🔌 閒置超時，進入深度睡眠...");
+    enterDeepSleep();
+  }
   delay(30);
 }
 
 void initWiFi() {
-  Serial.print(F("Setting WiFi AP..."));
-  WiFi.mode(WIFI_AP); WiFi.setSleep(false);
+  Serial.println();
+  Serial.println(F("Setting WiFi AP..."));
+  WiFi.mode(WIFI_AP);
+  //WiFi.setSleep(false);
+  delay(100); // 等待模式切換
+
   uint8_t macAddr[6];
   WiFi.softAPmacAddress(macAddr);
-    while (!WiFi.softAP(String(TOY_SSID)+String(macAddr[3]+macAddr[4]+macAddr[5],HEX), TOY_PWD, 1, false, 1)) {
-    Serial.print(F("."));
+  char ssidBuffer[32];
+  snprintf(ssidBuffer, sizeof(ssidBuffer), "%s_%02X%02X%02X", TOY_SSID, macAddr[3], macAddr[4], macAddr[5]);
+  Serial.print(F("SSID=")); Serial.println(ssidBuffer);
+
+  // 檢查密碼長度（WPA2 要求至少 8 字元）
+  if (strlen(TOY_PWD) < 8) {
+    Serial.println(F("⚠️ 密碼長度小於8，將先嘗試使用開放 AP（無密碼）以便偵錯"));
   }
-  Serial.print(F("successfully!"));
-  Serial.println("SSID=" + String(TOY_SSID) + String(macAddr[3]+macAddr[4]+macAddr[5],HEX));
+
+  bool ok = WiFi.softAP(ssidBuffer, strlen(TOY_PWD) >= 8 ? TOY_PWD : nullptr);
+  Serial.print(F("softAP() returned: ")); Serial.println(ok ? "true" : "false");
+
+  if (ok) {
+    Serial.print(F("AP IP: ")); Serial.println(WiFi.softAPIP());
+    Serial.println(F("successfully!"));
+    return;
+  }
+
+  // 若用密碼啟用失敗，嘗試不設密碼的開放 AP
+  Serial.println(F("嘗試不設密碼啟用 AP..."));
+  if (WiFi.softAP(ssidBuffer)) {
+    Serial.println(F("softAP (open) 成功"));
+    Serial.print(F("AP IP: ")); Serial.println(WiFi.softAPIP());
+  } else {
+    Serial.println(F("softAP (open) 也失敗，請檢查硬體連線與引腳狀態"));
+    Serial.print(F("WiFi mode: ")); Serial.println(WiFi.getMode());
+    Serial.print(F("WiFi status: ")); Serial.println(WiFi.status());
+  }
 }
 
 void handleRoot() {
+  resetIdleTimer();
   server.send(200, "text/html; charset=utf-8", htmlPage);
 }
 
 void handleAPI() {
+  resetIdleTimer();
   String response = "{\"status\":\"ok\",\"mode\":" + String(animationMode) + "}";
   server.send(200, "application/json", response);
 }
 
 void handleSetMode() {
+  resetIdleTimer();
   if (server.hasArg("mode")) {
     int mode = server.arg("mode").toInt();
     setAnimationMode(mode);
@@ -570,6 +624,7 @@ void handleSetMode() {
 }
 
 void handleSetBrightness() {
+  resetIdleTimer();
   if (server.hasArg("value")) {
     int brightness = server.arg("value").toInt();
     // 範圍校驗：0-255
@@ -586,6 +641,7 @@ void handleSetBrightness() {
 }
 
 void handleSetColor() {
+  resetIdleTimer();
   if (server.hasArg("r") && server.hasArg("g") && server.hasArg("b")) {
     int r = constrain(server.arg("r").toInt(), 0, 255);
     int g = constrain(server.arg("g").toInt(), 0, 255);
@@ -602,6 +658,7 @@ void handleSetColor() {
 }
 
 void handleClearLEDs() {
+  resetIdleTimer();
   clearLEDs();
   FastLED.show();
   Serial.println("🟢 LED已清空");
@@ -609,6 +666,7 @@ void handleClearLEDs() {
 }
 
 void handleToggleAuto() {
+  resetIdleTimer();
   autoMode = !autoMode;
   Serial.print("🔄 自動模式: ");
   Serial.println(autoMode ? "啟用" : "禁用");
@@ -619,41 +677,40 @@ void setAnimationMode(int mode) {
   animationMode = mode;
   brightnessLevel = 255;
   animationTimer = millis();
+  
+  // 重設色彩相關變數
+  currentColorIndex = 0;
+  currentAnimColor = breathingColors[0];
+  nextAnimColor = breathingColors[1];
+  breathingCycleCount = 0;
+  colorTransitionFrames = 0;
+  
   Serial.print("📺 模式切換: ");
   
   switch(mode) {
     case 0: Serial.println("彩虹循環"); break;
     case 1: Serial.println("隨機閃爍"); break;
-    case 2: Serial.println("顏色脈衝"); break;
+    case 2: Serial.println("呼吸燈"); break;
     case 3: Serial.println("跑馬燈"); break;
   }
 }
 
 void handleVibration() {
+  resetIdleTimer();
   Serial.println("✨ 偵測到震動！");
-  animationMode = (animationMode + 1) % 3;
+  animationMode = (animationMode + 1) % 4;
   brightnessLevel = 255;
   animationTimer = millis();
 }
 
 void updateAnimation() {
-  unsigned long elapsed = millis() - animationTimer;
-  
   if (animationMode == 0) {
     rainbowCycle(255);
   } else if (animationMode == 1) {
     randomFlash();
   } else if (animationMode == 2) {
-    // 脈衝模式：先保持2秒，然後逐漸淡出
-    unsigned long fadeStart = 2000;
-    if (elapsed > fadeStart) {
-      unsigned long fadeElapsed = elapsed - fadeStart;
-      int calcValue = 255 - (fadeElapsed / 10);
-      uint8_t brightness = max(0, min(255, calcValue));
-      colorPulse(pulseColor, brightness);
-    } else {
-      colorPulse(pulseColor, 255);
-    }
+    // 呼吸燈模式：平滑呼吸，每 3 個完整循環換色
+    breathingLight();
   } else if (animationMode == 3) {
     chaseAnimation();
   }
@@ -677,12 +734,27 @@ void randomFlash() {
 void chaseAnimation() {
   static uint8_t position = 0;
   static unsigned long lastUpdate = 0;
+  static uint8_t lastPosition = 255;  // 用來偵測一圈完成
   unsigned long now = millis();
   
   // 每100ms更新一次位置
   if (now - lastUpdate > 100) {
+    lastPosition = position;
     position = (position + 1) % NUM_LEDS;
     lastUpdate = now;
+    
+    // 偵測完成一圈（從 NUM_LEDS-1 回到 0）
+    if (lastPosition == NUM_LEDS - 1 && position == 0) {
+      breathingCycleCount++;
+      
+      // 每 3 圈開始色彩過渡
+      if (breathingCycleCount >= colorSwitchCycles && colorTransitionFrames == 0) {
+        int nextIdx = (currentColorIndex + 1) % numBreathingColors;
+        nextAnimColor = breathingColors[nextIdx];
+        colorTransitionFrames = 1;  // 開始過渡
+        breathingCycleCount = 0;
+      }
+    }
   }
   
   // 清空所有LED
@@ -690,11 +762,26 @@ void chaseAnimation() {
     leds[i] = CRGB::Black;
   }
   
-  // 繪製跑馬燈：當前位置是亮的顏色，後面3個LED逐漸淡出
-  leds[position] = pulseColor;
-  if (position > 0) leds[position - 1] = CRGB(pulseColor.r / 2, pulseColor.g / 2, pulseColor.b / 2);
-  if (position > 1) leds[position - 2] = CRGB(pulseColor.r / 4, pulseColor.g / 4, pulseColor.b / 4);
-  if (position > 2) leds[position - 3] = CRGB(pulseColor.r / 8, pulseColor.g / 8, pulseColor.b / 8);
+  // 計算當前顯示色彩（支援漸層過渡）
+  CRGB chaseColor = currentAnimColor;
+  if (colorTransitionFrames > 0) {
+    if (colorTransitionFrames < colorTransitionDuration) {
+      chaseColor = lerpColor(currentAnimColor, nextAnimColor, colorTransitionFrames, colorTransitionDuration);
+      colorTransitionFrames++;
+    } else {
+      // 過渡完成
+      currentColorIndex = (currentColorIndex + 1) % numBreathingColors;
+      currentAnimColor = nextAnimColor;
+      colorTransitionFrames = 0;
+      chaseColor = currentAnimColor;
+    }
+  }
+  
+  // 使用當前色彩（支援漸層）繪製跑馬燈
+  leds[position] = chaseColor;
+  if (position > 0) leds[position - 1] = CRGB(chaseColor.r / 2, chaseColor.g / 2, chaseColor.b / 2);
+  if (position > 1) leds[position - 2] = CRGB(chaseColor.r / 4, chaseColor.g / 4, chaseColor.b / 4);
+  if (position > 2) leds[position - 3] = CRGB(chaseColor.r / 8, chaseColor.g / 8, chaseColor.b / 8);
 }
 
 void colorPulse(CRGB color, uint8_t brightness) {
@@ -710,8 +797,99 @@ void colorPulse(CRGB color, uint8_t brightness) {
   }
 }
 
+// 呼吸燈模式：平滑呼吸，每 3 個循環平滑漸層換色
+void breathingLight() {
+  static uint8_t breathValue = 0;
+  static unsigned long lastUpdate = 0;
+  unsigned long now = millis();
+  
+  // 每 50ms 更新一次呼吸亮度
+  if (now - lastUpdate > 50) {
+    breathValue += 4;  // 控制呼吸速度，數值越小越慢
+    lastUpdate = now;
+    
+    // 偵測呼吸循環完成（breathValue 從 0 回到接近 0）
+    if (breathValue % 256 < 4) {
+      breathingCycleCount++;
+      
+      // 每 3 個循環開始色彩過渡
+      if (breathingCycleCount >= colorSwitchCycles && colorTransitionFrames == 0) {
+        int nextIdx = (currentColorIndex + 1) % numBreathingColors;
+        nextAnimColor = breathingColors[nextIdx];
+        colorTransitionFrames = 1;  // 開始過渡
+        breathingCycleCount = 0;
+      }
+    }
+    
+    // 更新色彩過渡進度
+    if (colorTransitionFrames > 0) {
+      if (colorTransitionFrames < colorTransitionDuration) {
+        colorTransitionFrames++;
+      } else {
+        // 過渡完成
+        currentColorIndex = (currentColorIndex + 1) % numBreathingColors;
+        currentAnimColor = nextAnimColor;
+        colorTransitionFrames = 0;
+      }
+    }
+  }
+  
+  // 計算當前顯示色彩（支援漸層過渡）
+  CRGB displayColor = currentAnimColor;
+  if (colorTransitionFrames > 0 && colorTransitionFrames < colorTransitionDuration) {
+    displayColor = lerpColor(currentAnimColor, nextAnimColor, colorTransitionFrames, colorTransitionDuration);
+  }
+  
+  // 利用 sin8 產生平滑呼吸曲線（0-255-0）
+  uint8_t fade = sin8(breathValue);
+  
+  for (int i = 0; i < NUM_LEDS; i++) {
+    leds[i] = displayColor;
+    leds[i].nscale8(fade);
+  }
+}
+
+// 色彩插值函數：平滑過渡從 from 色到 to 色
+// t: 當前進度（0 ~ max_t），max_t: 最大進度
+CRGB lerpColor(CRGB from, CRGB to, uint16_t t, uint16_t max_t) {
+  if (t >= max_t) return to;
+  if (t <= 0) return from;
+  
+  uint16_t ratio = (t * 256) / max_t;  // 0~256，256 表示 100% 到達目標色
+  uint8_t r = (from.r * (256 - ratio) + to.r * ratio) / 256;
+  uint8_t g = (from.g * (256 - ratio) + to.g * ratio) / 256;
+  uint8_t b = (from.b * (256 - ratio) + to.b * ratio) / 256;
+  
+  return CRGB(r, g, b);
+}
+
 void clearLEDs() {
   for (int i = 0; i < NUM_LEDS; i++) {
     leds[i] = CRGB::Black;
   }
+}
+
+// 重設閒置計時（有使用者互動時呼叫）
+void resetIdleTimer() {
+  lastActivity = millis();
+}
+
+// 進入深度睡眠（等待外部 Reset / RST 喚醒）
+void enterDeepSleep() {
+  Serial.println("💤 準備進入深度睡眠...");
+  // 優雅關閉 LED
+  clearLEDs();
+  FastLED.show();
+  delay(50);
+
+  // 停止服務並關閉 WiFi
+  server.stop();
+  WiFi.softAPdisconnect(true);
+  WiFi.disconnect(true);
+  delay(20);
+
+  // 呼叫深度睡眠，參數為 microseconds，0 表示無限期睡眠，需外部 Reset 喚醒
+  ESP.deepSleep(0);
+  // 如果仍執行到這裡，稍作等待
+  delay(1000);
 }
