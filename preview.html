@@ -6,32 +6,161 @@
   <title>Interactive LED</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; justify-content: center; align-items: center; padding: 20px; }
-    .container { background: white; border-radius: 20px; padding: 30px; box-sizing: border-box; max-width: 400px; width: 100%; box-shadow: 0 10px 40px rgba(0,0,0,0.3); }
-    h1 { text-align: center; color: #333; margin-bottom: 20px; font-size: 28px; }
-    .lang-buttons { display: flex; gap: 8px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap; }
-    .lang-btn { padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px; background: #fff; cursor: pointer; font-size: 12px; font-weight: bold; transition: all 0.3s; }
-    .lang-btn.active { background: #667eea; color: white; border-color: #667eea; }
-    .lang-btn:hover { background: #f0f0f0; }
+    body {
+      font-family: 'Arial', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+    .container {
+      background: white;
+      border-radius: 20px;
+      padding: 30px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+      max-width: 400px;
+      width: 100%;
+    }
+    h1 { text-align: center; color: #333; margin-bottom: 30px; font-size: 28px; }
     .mode-section { margin-bottom: 25px; }
-    .section-title { font-size: 14px; color: #666; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; font-weight: bold; }
-    .button-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
-    button { padding: 12px 16px; border: none; border-radius: 8px; font-size: 14px; font-weight: bold; cursor: pointer; transition: all 0.3s ease; }
-    .mode-btn { background: #f0f0f0; color: #333; border: 2px solid #ddd; }
+    .mode-section .section-title {
+      display: none;
+    }
+    .section-title {
+      font-size: 14px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 12px;
+      font-weight: bold;
+    }
+    .button-group {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    .button-group.full { grid-template-columns: 1fr; }
+    button {
+      padding: 12px 16px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .mode-btn {
+      background: #f0f0f0;
+      color: #333;
+      border: 2px solid #ddd;
+    }
     .mode-btn:hover { background: #e0e0e0; }
-    .mode-btn.active { background: #667eea; color: white; border-color: #667eea; }
-    .action-btn { background: #667eea; color: white; width: 100%; padding: 14px; }
+    .mode-btn.active {
+      background: #667eea;
+      color: white;
+      border-color: #667eea;
+    }
+    .action-btn {
+      background: #667eea;
+      color: white;
+    }
     .action-btn:hover { background: #5568d3; }
-    .control-section { background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
-    .slider-group { display: flex; align-items: center; gap: 10px; }
-    .slider-group label { min-width: 80px; font-size: 12px; }
-    input[type="range"] { flex: 1; height: 6px; border-radius: 3px; background: #ddd; }
-    .toggle { display: flex; align-items: center; justify-content: space-between; padding: 10px; background: white; border-radius: 6px; border: 1px solid #ddd; }
-    .toggle-switch { width: 50px; height: 28px; background: #ccc; border-radius: 14px; position: relative; cursor: pointer; transition: background 0.3s; }
+    .action-btn:active { transform: scale(0.98); }
+    .control-section {
+      background: #f9f9f9;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+    }
+    .slider-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .slider-group label { min-width: 60px; font-size: 12px; }
+    input[type="range"] {
+      flex: 1;
+      height: 6px;
+      border-radius: 3px;
+      background: #ddd;
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #667eea;
+      cursor: pointer;
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #667eea;
+      cursor: pointer;
+      border: none;
+    }
+    .toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px;
+      background: white;
+      border-radius: 6px;
+      border: 1px solid #ddd;
+    }
+    .toggle-switch {
+      width: 50px;
+      height: 28px;
+      background: #ccc;
+      border-radius: 14px;
+      position: relative;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
     .toggle-switch.active { background: #667eea; }
-    .toggle-switch::after { content: ''; position: absolute; width: 24px; height: 24px; background: white; border-radius: 50%; top: 2px; left: 2px; transition: left 0.3s; }
+    .toggle-switch::after {
+      content: '';
+      position: absolute;
+      width: 24px;
+      height: 24px;
+      background: white;
+      border-radius: 50%;
+      top: 2px;
+      left: 2px;
+      transition: left 0.3s;
+    }
     .toggle-switch.active::after { left: 24px; }
-    .status { background: #f0f7ff; padding: 15px; border-radius: 8px; border-left: 4px solid #667eea; margin-top: 20px; font-size: 13px; color: #555; }
+    .lang-buttons {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+    .lang-btn {
+      padding: 6px 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background: #fff;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: bold;
+      transition: all 0.3s;
+    }
+    .lang-btn.active {
+      background: #667eea;
+      color: white;
+      border-color: #667eea;
+    }
+    .lang-btn:hover { background: #f0f0f0; }
   </style>
 </head>
 <body>
@@ -55,18 +184,16 @@
       <button class="lang-btn" onclick="setLanguage('zh-TW')">繁體中文</button>
       <button class="lang-btn" onclick="setLanguage('zh-CN')">简体中文</button>
     </div>
-    
+        
     <div class="mode-section">
       <div class="section-title" id="modeTitle">Animation Mode</div>
-      <div class="button-group">
-        <button class="mode-btn active" id="rainbowBtn" onclick="setMode(0)">Rainbow</button>
-        <button class="mode-btn" id="flashBtn" onclick="setMode(1)">Flash</button>
-        <button class="mode-btn" id="pulseBtn" onclick="setMode(2)">Breathing</button>
-        <button class="mode-btn" id="chaseBtn" onclick="setMode(3)">Chase</button>
+      <div id="modeButtons" class="button-group" style="min-height: 50px;"></div>
+      <div class="button-group full" style="margin-top: 10px;">
+        <button class="mode-btn" id="manualBtn" onclick="toggleManualMode()">Manual Control</button>
       </div>
     </div>
     
-    <div class="control-section">
+    <div id="controlPanel" class="control-section" style="display:none;">
       <div class="slider-group">
         <label id="brightnessLabel">Brightness:</label>
         <input type="range" id="brightness" min="0" max="255" value="255" onchange="updateBrightness()">
@@ -74,8 +201,8 @@
       </div>
     </div>
     
-    <div class="control-section">
-      <div class="section-title" id="colorTitle">Color (Breathing Mode)</div>
+    <div id="colorPanel" class="control-section" style="display:none;">
+      <div class="section-title" id="colorTitle">Color Selection</div>
       <div style="display: flex; gap: 10px; align-items: center;">
         <input type="color" id="colorPicker" value="#00ffff" onchange="updateColor()" style="width: 50px; height: 40px; border: none; border-radius: 4px; cursor: pointer;">
         <div style="flex: 1;">
@@ -85,15 +212,14 @@
       </div>
     </div>
     
-    <div class="control-section">
-      <div class="section-title" id="autoModeTitle">Auto Mode</div>
-      <div class="toggle">
-        <span id="vibrationLabel">Vibration Trigger</span>
-        <div class="toggle-switch active" id="autoToggle" onclick="toggleAutoMode()"></div>
+    <div class="control-section" style="border-top: 1px solid #ddd; padding-top: 20px;">
+      <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px; justify-content: space-between;">
+        <label id="vibrationLabel" style="margin: 0; flex: 1; font-size: 13px; font-weight: bold;"><span id="vibrationText">Vibration Trigger (Auto Mode)</span></label>
+        <div class="toggle-switch" id="autoModeToggle" onclick="toggleAutoMode()" style="margin: 0;"></div>
       </div>
+      <div id="statusDisplay" style="font-size: 12px; color: #666; margin-top: 8px;">Status: <span id="statusValue">--</span></div>
+      <div id="clearStatus" style="margin-top: 10px; text-align: center; color: #d32f2f; font-weight: bold; display: none;">LED已关闭</div>
     </div>
-    
-    <button class="action-btn" id="clearBtn" onclick="clearAll()">Clear All LEDs</button>
     
     <div class="status">
       <strong id="statusTitle">Status:</strong> <span id="statusConnected">Connected to WiFi</span><br>
@@ -104,6 +230,11 @@
   <script>
     var currentMode = 0;
     var currentLang = 'en';
+
+    // list of translation keys for each animation mode in order
+    var modeKeys = ['rainbowCycle','randomFlash','colorPulse','chase','cylon','fire','noise','pacifica','pride','twinkle','demoRainbow','demoGlitter','demoConfetti','demoSinelon','demoJuggle','demoBPM'];
+
+    // Multi-language translations
     var i18n = {
       'en': {
         'title': 'Interactive LED',
@@ -111,19 +242,36 @@
         'rainbow': 'Rainbow',
         'flash': 'Flash',
         'pulse': 'Breathing',
+        'chase': 'Chase',
         'brightness': 'Brightness:',
-        'colorTitle': 'Color (Breathing Mode)',
-        'autoMode': 'Auto Mode',
+        'colorTitle': 'Color Selection',
+        'colorSelection': 'Color Selection',
+        'manualControl': 'Manual Control',
         'vibrationTrigger': 'Vibration Trigger',
-        'clearLEDs': 'Clear All LEDs',
+        'clearLEDs': 'Clear LEDs',
+        'cleared': 'LEDs cleared!',
         'status': 'Status:',
-        'connected': 'Connected to WiFi',
+        'statusLabel': 'Status:',
         'currentMode': 'Current Mode: ',
+        'connected': 'Connected',
+        // mode names
         'rainbowCycle': 'Rainbow Cycle',
         'randomFlash': 'Random Flash',
-        'colorPulse': 'Breathing Light',
-        'chase': 'Chase',
-        'cleared': 'LEDs cleared!'
+        'colorPulse': 'Color Pulse',
+        // fx names
+        'cylon': 'Cylon',
+        'fire': 'Fire2012',
+        'noise': 'Noise Wave',
+        'pacifica': 'Pacifica',
+        'pride': 'Pride2015',
+        'twinkle': 'Twinkle Fox',
+        'demoRainbow': 'Demo Rainbow',
+        'demoGlitter': 'Demo Rainbow+Glitter',
+        'demoConfetti': 'Demo Confetti',
+        'demoSinelon': 'Demo Sinelon',
+        'demoJuggle': 'Demo Juggle',
+        'demoBPM': 'Demo BPM',
+        'close': 'Close'
       },
       'zh-TW': {
         'title': '互動LED玩具',
@@ -131,19 +279,36 @@
         'rainbow': '彩虹',
         'flash': '閃爍',
         'pulse': '呼吸燈',
+        'chase': '跑馬燈',
         'brightness': '亮度:',
-        'colorTitle': '顏色（呼吸燈模式）',
-        'autoMode': '自動模式',
+        'colorTitle': '顏色選擇',
+        'colorSelection': '顏色選擇',
+        'manualControl': '手動控制',
         'vibrationTrigger': '震動觸發',
-        'clearLEDs': '清空所有LED',
+        'clearLEDs': '清空LED',
+        'cleared': 'LED已清空！',
         'status': '狀態:',
-        'connected': '已連接至WiFi',
-        'currentMode': '當前模式: ',
+        'statusLabel': '狀態:',
+        'currentMode': '目前模式: ',
+        'connected': '已連接',
+        // mode names
         'rainbowCycle': '彩虹循環',
         'randomFlash': '隨機閃爍',
-        'colorPulse': '呼吸燈',
-        'chase': '跑馬燈',
-        'cleared': 'LED已清空！'
+        'colorPulse': '色彩跳動',
+        // fx names
+        'cylon': '賽安隆',
+        'fire': '火焰2012',
+        'noise': '雜訊波',
+        'pacifica': '太平洋',
+        'pride': '驕傲彩虹',
+        'twinkle': '閃爍狐狸',
+        'demoRainbow': '演示 彩虹',
+        'demoGlitter': '演示 彩虹+亮粉',
+        'demoConfetti': '演示 彩帶',
+        'demoSinelon': '演示 單點來回',
+        'demoJuggle': '演示 交錯',
+        'demoBPM': '演示 BPM',
+        'close': '關閉'
       },
       'zh-CN': {
         'title': '互动LED玩具',
@@ -151,26 +316,88 @@
         'rainbow': '彩虹',
         'flash': '闪烁',
         'pulse': '呼吸灯',
+        'chase': '跑马灯',
         'brightness': '亮度:',
-        'colorTitle': '颜色（呼吸灯模式）',
-        'autoMode': '自动模式',
+        'colorTitle': '颜色选择',
+        'colorSelection': '颜色选择',
+        'manualControl': '手动控制',
         'vibrationTrigger': '振动触发',
-        'clearLEDs': '清空所有LED',
+        'clearLEDs': '清空LED',
+        'cleared': 'LED已清空！',
         'status': '状态:',
-        'connected': '已连接至WiFi',
+        'statusLabel': '状态:',
         'currentMode': '当前模式: ',
+        'connected': '已连接',
+        // mode names
         'rainbowCycle': '彩虹循环',
         'randomFlash': '随机闪烁',
-        'colorPulse': '呼吸灯',
-        'chase': '跑马灯',
-        'cleared': 'LED已清空！'
+        'colorPulse': '色彩跳动',
+        // fx names
+        'cylon': '赛安隆',
+        'fire': '火焰2012',
+        'noise': '噪声波',
+        'pacifica': '太平洋',
+        'pride': '骄傲彩虹',
+        'twinkle': '闪烁狐狸',
+        'demoRainbow': '演示 彩虹',
+        'demoGlitter': '演示 彩虹+亮片',
+        'demoConfetti': '演示 彩带',
+        'demoSinelon': '演示 單點往返',
+        'demoJuggle': '演示 抛球',
+        'demoBPM': '演示 BPM',
+        'close': '关闭'
       }
     };
-
+    
+    // Get translation
     function t(key) {
       return i18n[currentLang][key] || i18n['en'][key] || key;
     }
+    
+    // helper: build the mode buttons dynamically
+    function createModeButtons() {
+      var container = document.getElementById('modeButtons');
+      if (!container) return;
+      container.innerHTML = '';
+      modeKeys.forEach(function(key, idx) {
+        var btn = document.createElement('button');
+        btn.className = 'mode-btn' + (idx === currentMode ? ' active' : '');
+        btn.id = 'modeBtn' + idx;
+        btn.textContent = t(key);
+        btn.onclick = function() { setMode(idx); };
+        container.appendChild(btn);
+      });
+      // Add close button
+      var closeBtn = document.createElement('button');
+      closeBtn.className = 'mode-btn';
+      closeBtn.id = 'closeLEDBtn';
+      closeBtn.textContent = t('close');
+      closeBtn.onclick = function() { clearAllLEDs(); };
+      container.appendChild(closeBtn);
+    }
 
+    // Update UI with current language
+    function updateUI() {
+      document.title = t('title');
+      document.getElementById('modeTitle').textContent = t('animationMode');
+      document.getElementById('brightnessLabel').textContent = t('brightness');
+      document.getElementById('colorTitle').textContent = t('colorTitle');
+      document.getElementById('manualBtn').textContent = t('manualControl') || 'Manual Control';
+      document.getElementById('vibrationText').textContent = t('vibrationTrigger') + ' (Auto Mode)';
+
+      // rebuild/refresh mode buttons text
+      createModeButtons();
+
+      var langBtns = document.querySelectorAll('.lang-btn');
+      for (var i = 0; i < langBtns.length; i++) {
+        langBtns[i].classList.remove('active');
+      }
+      if (currentLang === 'en') langBtns[0].classList.add('active');
+      else if (currentLang === 'zh-TW') langBtns[1].classList.add('active');
+      else if (currentLang === 'zh-CN') langBtns[2].classList.add('active');
+    }
+    
+    // Detect browser language and update
     function detectLanguage() {
       var browserLang = navigator.language || navigator.userLanguage;
       if (browserLang.indexOf('zh-Hans') !== -1 || browserLang === 'zh-CN') {
@@ -181,59 +408,126 @@
         currentLang = 'en';
       }
     }
-
-    function updateUI() {
-      document.getElementById('title').textContent = t('title');
-      document.getElementById('modeTitle').textContent = t('animationMode');
-      document.getElementById('rainbowBtn').textContent = t('rainbow');
-      document.getElementById('flashBtn').textContent = t('flash');
-      document.getElementById('pulseBtn').textContent = t('pulse');
-      document.getElementById('chaseBtn').textContent = t('chase');
-      document.getElementById('brightnessLabel').textContent = t('brightness');
-      document.getElementById('colorTitle').textContent = t('colorTitle');
-      document.getElementById('autoModeTitle').textContent = t('autoMode');
-      document.getElementById('vibrationLabel').textContent = t('vibrationTrigger');
-      document.getElementById('clearBtn').textContent = t('clearLEDs');
-      document.getElementById('statusTitle').textContent = t('status');
-      document.getElementById('statusConnected').textContent = t('connected');
-      
-      var modes = [t('rainbowCycle'), t('randomFlash'), t('colorPulse'), t('chase')];
-      document.getElementById('modeStatus').textContent = t('currentMode') + modes[currentMode];
-      
-      var langBtns = document.querySelectorAll('.lang-btn');
-      for (var i = 0; i < langBtns.length; i++) langBtns[i].classList.remove('active');
-      if (currentLang === 'en') langBtns[0].classList.add('active');
-      else if (currentLang === 'zh-TW') langBtns[1].classList.add('active');
-      else if (currentLang === 'zh-CN') langBtns[2].classList.add('active');
-    }
-
+    
+    // Change language
     function setLanguage(lang) {
       currentLang = lang;
       updateUI();
     }
-
+    
     function setMode(mode) {
       currentMode = mode;
-      var modes = [t('rainbowCycle'), t('randomFlash'), t('colorPulse'), t('chase')];
-      document.getElementById('modeStatus').textContent = t('currentMode') + modes[mode];
-      var buttons = document.querySelectorAll('.mode-btn');
-      for (var i = 0; i < buttons.length; i++) buttons[i].classList.remove('active');
-      buttons[mode].classList.add('active');
+      fetch('/api/setMode?mode=' + mode)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          // update status label
+          var modes = modeKeys.map(function(k){ return t(k); });
+          document.getElementById('modeStatus').textContent = t('currentMode') + modes[mode];
+          // toggle active button
+          var buttons = document.querySelectorAll('.mode-btn');
+          for (var i = 0; i < buttons.length; i++) {
+            buttons[i].classList.remove('active');
+          }
+          var btn = document.getElementById('modeBtn' + mode);
+          if (btn) btn.classList.add('active');
+        })
+        .catch(function(e) { console.error('Error setting mode:', e); });
     }
-
+    
     function updateBrightness() {
       var val = document.getElementById('brightness').value;
       document.getElementById('brightnessValue').textContent = val;
+      fetch('/api/setBrightness?value=' + val)
+        .then(function(r) { return r.json(); })
+        .catch(function(e) { console.log(e); });
     }
-
+    
     function toggleAutoMode() {
-      document.getElementById('autoToggle').classList.toggle('active');
+      fetch('/api/toggleAuto')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          console.log('toggleAuto response:', data);
+          updateStatus();
+        });
     }
-
-    function clearAll() {
-      alert(t('cleared'));
+    
+    function updateAutoModeToggle(active) {
+      var toggle = document.getElementById('autoModeToggle');
+      if (toggle) {
+        toggle.classList.toggle('active', active);
+      }
     }
+    
+    function toggleManualMode() {
+      fetch('/api/toggleManual')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          console.log('toggleManual response:', data);
+          updateStatus();
+        });
+    }
+    
+    function clearAllLEDs() {
+      fetch('/api/clear')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          document.getElementById('clearStatus').style.display = 'block';
+          setTimeout(function() {
+            document.getElementById('clearStatus').textContent = t('cleared');
+          }, 100);
+        });
+    }
+    
+    function updateStatus() {
+      fetch('/api/status')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          console.log('Status update:', data);
+          
+          // Update auto mode toggle switch
+          updateAutoModeToggle(data.autoMode);
+          document.getElementById('statusValue').textContent = data.autoMode ? 'ON' : 'OFF';
+          
+          // update mode status label in case mode changed
+          if (typeof data.mode !== 'undefined') {
+            var modes = modeKeys.map(function(k){ return t(k); });
+            document.getElementById('modeStatus').textContent = t('currentMode') + modes[data.mode];
+            // highlight active button as well
+            var btn = document.getElementById('modeBtn' + data.mode);
+            if (btn) {
+              var all = document.querySelectorAll('.mode-btn');
+              for (var i = 0; i < all.length; i++) all[i].classList.remove('active');
+              btn.classList.add('active');
+            }
+          }
 
+          // Update manual mode button
+          var manualBtn = document.getElementById('manualBtn');
+          var controlPanel = document.getElementById('controlPanel');
+          var colorPanel = document.getElementById('colorPanel');
+          
+          if (manualBtn && data.manualMode !== undefined) {
+            if (data.manualMode) {
+              manualBtn.style.background = '#ff9800';
+              manualBtn.style.color = 'white';
+              if (controlPanel) controlPanel.style.display = 'block';
+              if (colorPanel) colorPanel.style.display = 'block';
+            } else {
+              manualBtn.style.background = '';
+              manualBtn.style.color = '';
+              if (controlPanel) controlPanel.style.display = 'none';
+              if (colorPanel) colorPanel.style.display = 'none';
+            }
+          }
+          
+          // Hide clear status after showing
+          if (!data.cleared) {
+            document.getElementById('clearStatus').style.display = 'none';
+          }
+        })
+        .catch(function(e) { console.log('Status update error:', e); });
+    }
+    
     // Color functions
     function hexToRgb(hex) {
       var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -243,7 +537,11 @@
         b: parseInt(result[3], 16)
       } : { r: 0, g: 255, b: 255 };
     }
-
+    
+    function rgbToHex(r, g, b) {
+      return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+    }
+    
     function updateColor() {
       var hex = document.getElementById('colorPicker').value;
       var rgb = hexToRgb(hex);
@@ -251,8 +549,13 @@
       document.getElementById('colorR').textContent = rgb.r;
       document.getElementById('colorG').textContent = rgb.g;
       document.getElementById('colorB').textContent = rgb.b;
+      
+      // Send to device
+      fetch('/api/setColor?r=' + rgb.r + '&g=' + rgb.g + '&b=' + rgb.b)
+        .then(function(r) { return r.json(); })
+        .catch(function(e) { console.log(e); });
     }
-
+    
     function updateColorFromHex() {
       var hex = document.getElementById('colorHex').value;
       if (hex.startsWith('#') && hex.length === 7) {
@@ -260,11 +563,20 @@
         updateColor();
       }
     }
-
-    // Initialize on page load
+    
     window.onload = function() {
+      console.log('Page loaded');
+      if (typeof modeKeys === 'undefined' || !modeKeys) {
+        console.error('modeKeys not defined');
+      } else {
+        console.log('modeKeys defined:', modeKeys.length);
+      }
+      createModeButtons();
       detectLanguage();
       updateUI();
+      updateStatus();
+      // Update status every 2 seconds
+      setInterval(updateStatus, 2000);
     };
   </script>
 </body>

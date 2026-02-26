@@ -3,6 +3,16 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 
+// include 1D FX effects
+#include "fx/1d/cylon.h"
+#include "fx/1d/fire2012.h"
+#include "fx/1d/noisewave.h"
+#include "fx/1d/pacifica.h"
+#include "fx/1d/pride2015.h"
+#include "fx/1d/twinklefox.h"
+
+using namespace fl;
+
 // ========== WiFi 配置 ==========
 #define TOY_SSID "funXled"  // WiFi名稱
 #define TOY_PWD "12345678"    // WiFi密碼（至少8位）
@@ -24,7 +34,40 @@ int brightnessLevel = 0;
 int animationMode = 0;
 unsigned long animationTimer = 0;
 bool autoMode = true;  // 自動模式（由震動觸發）
+bool manualMode = false;  // 手動控制模式（允許調整亮度/色彩）
+bool cleared = false;  // LED已清空狀態
 CRGB pulseColor = CRGB::Cyan;  // 脈衝模式顏色
+
+// additional constants for modes
+const int MODE_RAINBOW = 0;
+const int MODE_FLASH = 1;
+const int MODE_BREATH = 2;
+const int MODE_CHASE = 3;
+const int MODE_CYLON = 4;
+const int MODE_FIRE = 5;
+const int MODE_NOISE = 6;
+const int MODE_PACIFICA = 7;
+const int MODE_PRIDE = 8;
+const int MODE_TWINKLE = 9;
+const int MODE_DEMO_RAINBOW = 10;
+const int MODE_DEMO_GLITTER = 11;
+const int MODE_DEMO_CONFETTI = 12;
+const int MODE_DEMO_SINELON = 13;
+const int MODE_DEMO_JUGGLE = 14;
+const int MODE_DEMO_BPM = 15;
+const int MODE_COUNT = 16; // total number of animation modes
+
+// FX objects (created with NUM_LEDS)
+Cylon cylon(NUM_LEDS);
+Fire2012 fire2012(NUM_LEDS);
+NoiseWave noiseWave(NUM_LEDS);
+Pacifica pacifica(NUM_LEDS);
+Pride2015 pride2015(NUM_LEDS);
+TwinkleFox twinklefox(NUM_LEDS);
+
+// demo pattern state
+uint8_t demoHue = 0;
+
 
 // ========== 呼吸燈模式（animationMode = 2）==========
 CRGB breathingColors[] = {CRGB::Cyan, CRGB::Magenta, CRGB::Yellow, CRGB::Green, CRGB::Blue, CRGB::Red};
@@ -50,9 +93,17 @@ void updateAnimation();
 void breathingLight();
 CRGB lerpColor(CRGB from, CRGB to, uint16_t t, uint16_t max_t);
 void rainbowCycle(uint8_t brightness);
-void colorPulse(CRGB color, uint8_t brightness);
 void randomFlash();
 void chaseAnimation();
+
+// demo patterns
+void demoRainbow();
+void demoRainbowGlitter();
+void demoConfetti();
+void demoSinelon();
+void demoJuggle();
+void demoBpm();
+
 void clearLEDs();
 void setAnimationMode(int mode);
 void initWiFi();
@@ -62,6 +113,7 @@ void handleSetMode();
 void handleSetBrightness();
 void handleSetColor();
 void handleToggleAuto();
+void handleToggleManual();
 void handleClearLEDs();
 void resetIdleTimer();
 void enterDeepSleep();
@@ -95,6 +147,9 @@ const char* htmlPage = R"rawliteral(
     }
     h1 { text-align: center; color: #333; margin-bottom: 30px; font-size: 28px; }
     .mode-section { margin-bottom: 25px; }
+    .mode-section .section-title {
+      display: none;
+    }
     .section-title {
       font-size: 14px;
       color: #666;
@@ -254,15 +309,13 @@ const char* htmlPage = R"rawliteral(
         
     <div class="mode-section">
       <div class="section-title" id="modeTitle">Animation Mode</div>
-      <div class="button-group">
-        <button class="mode-btn active" id="rainbowBtn" onclick="setMode(0)">Rainbow</button>
-        <button class="mode-btn" id="flashBtn" onclick="setMode(1)">Flash</button>
-        <button class="mode-btn" id="pulseBtn" onclick="setMode(2)">Pulse</button>
-        <button class="mode-btn" id="chaseBtn" onclick="setMode(3)">Chase</button>
+      <div id="modeButtons" class="button-group" style="min-height: 50px;"></div>
+      <div class="button-group full" style="margin-top: 10px;">
+        <button class="mode-btn" id="manualBtn" onclick="toggleManualMode()">Manual Control</button>
       </div>
     </div>
     
-    <div class="control-section">
+    <div id="controlPanel" class="control-section" style="display:none;">
       <div class="slider-group">
         <label id="brightnessLabel">Brightness:</label>
         <input type="range" id="brightness" min="0" max="255" value="255" onchange="updateBrightness()">
@@ -270,8 +323,8 @@ const char* htmlPage = R"rawliteral(
       </div>
     </div>
     
-    <div class="control-section">
-      <div class="section-title" id="colorTitle">Color (Pulse Mode)</div>
+    <div id="colorPanel" class="control-section" style="display:none;">
+      <div class="section-title" id="colorTitle">Color Selection</div>
       <div style="display: flex; gap: 10px; align-items: center;">
         <input type="color" id="colorPicker" value="#00ffff" onchange="updateColor()" style="width: 50px; height: 40px; border: none; border-radius: 4px; cursor: pointer;">
         <div style="flex: 1;">
@@ -281,15 +334,14 @@ const char* htmlPage = R"rawliteral(
       </div>
     </div>
     
-    <div class="control-section">
-      <div class="section-title" id="autoModeTitle">Auto Mode</div>
-      <div class="toggle">
-        <span id="vibrationLabel">Vibration Trigger</span>
-        <div class="toggle-switch active" id="autoToggle" onclick="toggleAutoMode()"></div>
+    <div class="control-section" style="border-top: 1px solid #ddd; padding-top: 20px;">
+      <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px; justify-content: space-between;">
+        <label id="vibrationLabel" style="margin: 0; flex: 1; font-size: 13px; font-weight: bold;"><span id="vibrationText">Vibration Trigger (Auto Mode)</span></label>
+        <div class="toggle-switch" id="autoModeToggle" onclick="toggleAutoMode()" style="margin: 0;"></div>
       </div>
+      <div id="statusDisplay" style="font-size: 12px; color: #666; margin-top: 8px;">Status: <span id="statusValue">--</span></div>
+      <div id="clearStatus" style="margin-top: 10px; text-align: center; color: #d32f2f; font-weight: bold; display: none;">LED已关闭</div>
     </div>
-    
-    <button class="action-btn" style="width: 100%;" id="clearBtn" onclick="clearAll()">Clear All LEDs</button>
     
     <div class="status">
       <strong id="statusTitle">Status:</strong> <span id="statusConnected">Connected to WiFi</span><br>
@@ -300,7 +352,10 @@ const char* htmlPage = R"rawliteral(
   <script>
     var currentMode = 0;
     var currentLang = 'en';
-    
+
+    // list of translation keys for each animation mode in order
+    var modeKeys = ['rainbowCycle','randomFlash','colorPulse','chase','cylon','fire','noise','pacifica','pride','twinkle','demoRainbow','demoGlitter','demoConfetti','demoSinelon','demoJuggle','demoBPM'];
+
     // Multi-language translations
     var i18n = {
       'en': {
@@ -308,60 +363,111 @@ const char* htmlPage = R"rawliteral(
         'animationMode': 'Animation Mode',
         'rainbow': 'Rainbow',
         'flash': 'Flash',
-        'pulse': 'Pulse',
+        'pulse': 'Breathing',
+        'chase': 'Chase',
         'brightness': 'Brightness:',
-        'colorTitle': 'Color (Pulse Mode)',
-        'autoMode': 'Auto Mode',
+        'colorTitle': 'Color Selection',
+        'colorSelection': 'Color Selection',
+        'manualControl': 'Manual Control',
         'vibrationTrigger': 'Vibration Trigger',
-        'clearLEDs': 'Clear All LEDs',
+        'clearLEDs': 'Clear LEDs',
+        'cleared': 'LEDs cleared!',
         'status': 'Status:',
-        'connected': 'Connected to WiFi',
+        'statusLabel': 'Status:',
         'currentMode': 'Current Mode: ',
+        'connected': 'Connected',
+        // mode names
         'rainbowCycle': 'Rainbow Cycle',
         'randomFlash': 'Random Flash',
         'colorPulse': 'Color Pulse',
-        'chase': 'Chase',
-        'cleared': 'LEDs cleared!'
+        // fx names
+        'cylon': 'Cylon',
+        'fire': 'Fire2012',
+        'noise': 'Noise Wave',
+        'pacifica': 'Pacifica',
+        'pride': 'Pride2015',
+        'twinkle': 'Twinkle Fox',
+        'demoRainbow': 'Demo Rainbow',
+        'demoGlitter': 'Demo Rainbow+Glitter',
+        'demoConfetti': 'Demo Confetti',
+        'demoSinelon': 'Demo Sinelon',
+        'demoJuggle': 'Demo Juggle',
+        'demoBPM': 'Demo BPM',
+        'close': 'Close'
       },
       'zh-TW': {
         'title': '互動LED玩具',
         'animationMode': '動畫模式',
         'rainbow': '彩虹',
         'flash': '閃爍',
-        'pulse': '脈衝',
+        'pulse': '呼吸燈',
+        'chase': '跑馬燈',
         'brightness': '亮度:',
-        'colorTitle': '顏色（脈衝模式）',
-        'autoMode': '自動模式',
+        'colorTitle': '顏色選擇',
+        'colorSelection': '顏色選擇',
+        'manualControl': '手動控制',
         'vibrationTrigger': '震動觸發',
-        'clearLEDs': '清空所有LED',
+        'clearLEDs': '清空LED',
+        'cleared': 'LED已清空！',
         'status': '狀態:',
-        'connected': '已連接至WiFi',
-        'currentMode': '當前模式: ',
+        'statusLabel': '狀態:',
+        'currentMode': '目前模式: ',
+        'connected': '已連接',
+        // mode names
         'rainbowCycle': '彩虹循環',
         'randomFlash': '隨機閃爍',
-        'colorPulse': '顏色脈衝',
-        'chase': '跑馬燈',
-        'cleared': 'LED已清空！'
+        'colorPulse': '色彩跳動',
+        // fx names
+        'cylon': '賽安隆',
+        'fire': '火焰2012',
+        'noise': '雜訊波',
+        'pacifica': '太平洋',
+        'pride': '驕傲彩虹',
+        'twinkle': '閃爍狐狸',
+        'demoRainbow': '演示 彩虹',
+        'demoGlitter': '演示 彩虹+亮粉',
+        'demoConfetti': '演示 彩帶',
+        'demoSinelon': '演示 單點來回',
+        'demoJuggle': '演示 交錯',
+        'demoBPM': '演示 BPM',
+        'close': '關閉'
       },
       'zh-CN': {
         'title': '互动LED玩具',
         'animationMode': '动画模式',
         'rainbow': '彩虹',
         'flash': '闪烁',
-        'pulse': '脉冲',
+        'pulse': '呼吸灯',
+        'chase': '跑马灯',
         'brightness': '亮度:',
-        'colorTitle': '颜色（脉冲模式）',
-        'autoMode': '自动模式',
+        'colorTitle': '颜色选择',
+        'colorSelection': '颜色选择',
+        'manualControl': '手动控制',
         'vibrationTrigger': '振动触发',
-        'clearLEDs': '清空所有LED',
+        'clearLEDs': '清空LED',
+        'cleared': 'LED已清空！',
         'status': '状态:',
-        'connected': '已连接至WiFi',
+        'statusLabel': '状态:',
         'currentMode': '当前模式: ',
+        'connected': '已连接',
+        // mode names
         'rainbowCycle': '彩虹循环',
         'randomFlash': '随机闪烁',
-        'colorPulse': '颜色脉冲',
-        'chase': '跑马灯',
-        'cleared': 'LED已清空！'
+        'colorPulse': '色彩跳动',
+        // fx names
+        'cylon': '赛安隆',
+        'fire': '火焰2012',
+        'noise': '噪声波',
+        'pacifica': '太平洋',
+        'pride': '骄傲彩虹',
+        'twinkle': '闪烁狐狸',
+        'demoRainbow': '演示 彩虹',
+        'demoGlitter': '演示 彩虹+亮片',
+        'demoConfetti': '演示 彩带',
+        'demoSinelon': '演示 單點往返',
+        'demoJuggle': '演示 抛球',
+        'demoBPM': '演示 BPM',
+        'close': '关闭'
       }
     };
     
@@ -370,25 +476,40 @@ const char* htmlPage = R"rawliteral(
       return i18n[currentLang][key] || i18n['en'][key] || key;
     }
     
+    // helper: build the mode buttons dynamically
+    function createModeButtons() {
+      var container = document.getElementById('modeButtons');
+      if (!container) return;
+      container.innerHTML = '';
+      modeKeys.forEach(function(key, idx) {
+        var btn = document.createElement('button');
+        btn.className = 'mode-btn' + (idx === currentMode ? ' active' : '');
+        btn.id = 'modeBtn' + idx;
+        btn.textContent = t(key);
+        btn.onclick = function() { setMode(idx); };
+        container.appendChild(btn);
+      });
+      // Add close button
+      var closeBtn = document.createElement('button');
+      closeBtn.className = 'mode-btn';
+      closeBtn.id = 'closeLEDBtn';
+      closeBtn.textContent = t('close');
+      closeBtn.onclick = function() { clearAllLEDs(); };
+      container.appendChild(closeBtn);
+    }
+
     // Update UI with current language
     function updateUI() {
       document.title = t('title');
       document.getElementById('modeTitle').textContent = t('animationMode');
-      document.getElementById('rainbowBtn').textContent = t('rainbow');
-      document.getElementById('flashBtn').textContent = t('flash');
-      document.getElementById('pulseBtn').textContent = t('pulse');
-      document.getElementById('chaseBtn').textContent = t('chase');
       document.getElementById('brightnessLabel').textContent = t('brightness');
       document.getElementById('colorTitle').textContent = t('colorTitle');
-      document.getElementById('autoModeTitle').textContent = t('autoMode');
-      document.getElementById('vibrationLabel').textContent = t('vibrationTrigger');
-      document.getElementById('clearBtn').textContent = t('clearLEDs');
-      document.getElementById('statusTitle').textContent = t('status');
-      document.getElementById('statusConnected').textContent = t('connected');
-      
-      var modes = [t('rainbowCycle'), t('randomFlash'), t('colorPulse')];
-      document.getElementById('modeStatus').textContent = t('currentMode') + modes[currentMode];
-      
+      document.getElementById('manualBtn').textContent = t('manualControl') || 'Manual Control';
+      document.getElementById('vibrationText').textContent = t('vibrationTrigger') + ' (Auto Mode)';
+
+      // rebuild/refresh mode buttons text
+      createModeButtons();
+
       var langBtns = document.querySelectorAll('.lang-btn');
       for (var i = 0; i < langBtns.length; i++) {
         langBtns[i].classList.remove('active');
@@ -421,14 +542,18 @@ const char* htmlPage = R"rawliteral(
       fetch('/api/setMode?mode=' + mode)
         .then(function(r) { return r.json(); })
         .then(function(data) {
-          var modes = [t('rainbowCycle'), t('randomFlash'), t('colorPulse')];
+          // update status label
+          var modes = modeKeys.map(function(k){ return t(k); });
           document.getElementById('modeStatus').textContent = t('currentMode') + modes[mode];
+          // toggle active button
           var buttons = document.querySelectorAll('.mode-btn');
           for (var i = 0; i < buttons.length; i++) {
             buttons[i].classList.remove('active');
           }
-          buttons[mode].classList.add('active');
-        });
+          var btn = document.getElementById('modeBtn' + mode);
+          if (btn) btn.classList.add('active');
+        })
+        .catch(function(e) { console.error('Error setting mode:', e); });
     }
     
     function updateBrightness() {
@@ -442,15 +567,87 @@ const char* htmlPage = R"rawliteral(
     function toggleAutoMode() {
       fetch('/api/toggleAuto')
         .then(function(r) { return r.json(); })
-        .then(function() {
-          document.getElementById('autoToggle').classList.toggle('active');
+        .then(function(data) {
+          console.log('toggleAuto response:', data);
+          updateStatus();
         });
     }
     
-    function clearAll() {
+    function updateAutoModeToggle(active) {
+      var toggle = document.getElementById('autoModeToggle');
+      if (toggle) {
+        toggle.classList.toggle('active', active);
+      }
+    }
+    
+    function toggleManualMode() {
+      fetch('/api/toggleManual')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          console.log('toggleManual response:', data);
+          updateStatus();
+        });
+    }
+    
+    function clearAllLEDs() {
       fetch('/api/clear')
         .then(function(r) { return r.json(); })
-        .then(function(data) { alert(t('cleared')); });
+        .then(function(data) {
+          document.getElementById('clearStatus').style.display = 'block';
+          setTimeout(function() {
+            document.getElementById('clearStatus').textContent = t('cleared');
+          }, 100);
+        });
+    }
+    
+    function updateStatus() {
+      fetch('/api/status')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          console.log('Status update:', data);
+          
+          // Update auto mode toggle switch
+          updateAutoModeToggle(data.autoMode);
+          document.getElementById('statusValue').textContent = data.autoMode ? 'ON' : 'OFF';
+          
+          // update mode status label in case mode changed
+          if (typeof data.mode !== 'undefined') {
+            var modes = modeKeys.map(function(k){ return t(k); });
+            document.getElementById('modeStatus').textContent = t('currentMode') + modes[data.mode];
+            // highlight active button as well
+            var btn = document.getElementById('modeBtn' + data.mode);
+            if (btn) {
+              var all = document.querySelectorAll('.mode-btn');
+              for (var i = 0; i < all.length; i++) all[i].classList.remove('active');
+              btn.classList.add('active');
+            }
+          }
+
+          // Update manual mode button
+          var manualBtn = document.getElementById('manualBtn');
+          var controlPanel = document.getElementById('controlPanel');
+          var colorPanel = document.getElementById('colorPanel');
+          
+          if (manualBtn && data.manualMode !== undefined) {
+            if (data.manualMode) {
+              manualBtn.style.background = '#ff9800';
+              manualBtn.style.color = 'white';
+              if (controlPanel) controlPanel.style.display = 'block';
+              if (colorPanel) colorPanel.style.display = 'block';
+            } else {
+              manualBtn.style.background = '';
+              manualBtn.style.color = '';
+              if (controlPanel) controlPanel.style.display = 'none';
+              if (colorPanel) colorPanel.style.display = 'none';
+            }
+          }
+          
+          // Hide clear status after showing
+          if (!data.cleared) {
+            document.getElementById('clearStatus').style.display = 'none';
+          }
+        })
+        .catch(function(e) { console.log('Status update error:', e); });
     }
     
     // Color functions
@@ -489,10 +686,19 @@ const char* htmlPage = R"rawliteral(
       }
     }
     
-    // Initialize on page load
     window.onload = function() {
+      console.log('Page loaded');
+      if (typeof modeKeys === 'undefined' || !modeKeys) {
+        console.error('modeKeys not defined');
+      } else {
+        console.log('modeKeys defined:', modeKeys.length);
+      }
+      createModeButtons();
       detectLanguage();
       updateUI();
+      updateStatus();
+      // Update status every 2 seconds
+      setInterval(updateStatus, 2000);
     };
   </script>
 </body>
@@ -516,6 +722,7 @@ void setup() {
   server.on("/api/setColor", handleSetColor);
   server.on("/api/clear", handleClearLEDs);
   server.on("/api/toggleAuto", handleToggleAuto);
+  server.on("/api/toggleManual", handleToggleManual);
   server.begin();
   
   Serial.println("🚀 Web服務器已啟動");
@@ -608,7 +815,7 @@ void handleRoot() {
 
 void handleAPI() {
   resetIdleTimer();
-  String response = "{\"status\":\"ok\",\"mode\":" + String(animationMode) + "}";
+  String response = "{\"status\":\"ok\",\"mode\":" + String(animationMode) + ",\"autoMode\":" + String(autoMode ? "true" : "false") + ",\"manualMode\":" + String(manualMode ? "true" : "false") + ",\"cleared\":" + String(cleared ? "true" : "false") + "}";
   server.send(200, "application/json", response);
 }
 
@@ -632,6 +839,7 @@ void handleSetBrightness() {
     if (brightness > 255) brightness = 255;
     FastLED.setBrightness(brightness);
     FastLED.show();
+    cleared = false;  // 重置清空狀態
     Serial.print("💡 亮度設置: ");
     Serial.println(brightness);
     server.send(200, "application/json", "{\"status\":\"ok\",\"brightness\":" + String(brightness) + "}");
@@ -647,6 +855,7 @@ void handleSetColor() {
     int g = constrain(server.arg("g").toInt(), 0, 255);
     int b = constrain(server.arg("b").toInt(), 0, 255);
     pulseColor = CRGB(r, g, b);
+    cleared = false;  // 重置清空狀態
     Serial.print("🎨 顏色設置 RGB(");
     Serial.print(r); Serial.print(",");
     Serial.print(g); Serial.print(",");
@@ -660,6 +869,7 @@ void handleSetColor() {
 void handleClearLEDs() {
   resetIdleTimer();
   clearLEDs();
+  cleared = true;  // 標記為已清空狀態
   FastLED.show();
   Serial.println("🟢 LED已清空");
   server.send(200, "application/json", "{\"status\":\"ok\"}");
@@ -670,13 +880,27 @@ void handleToggleAuto() {
   autoMode = !autoMode;
   Serial.print("🔄 自動模式: ");
   Serial.println(autoMode ? "啟用" : "禁用");
-  server.send(200, "application/json", "{\"status\":\"ok\",\"autoMode\":" + String(autoMode) + "}");
+  server.send(200, "application/json", "{\"status\":\"ok\",\"autoMode\":" + String(autoMode ? "true" : "false") + "}");
+}
+
+void handleToggleManual() {
+  resetIdleTimer();
+  manualMode = !manualMode;
+  if (!manualMode) {
+    // 退出手動模式時清空LED
+    clearLEDs();
+    FastLED.show();
+  }
+  Serial.print("✋ 手動控制模式: ");
+  Serial.println(manualMode ? "啟用" : "禁用");
+  server.send(200, "application/json", "{\"status\":\"ok\",\"manualMode\":" + String(manualMode ? "true" : "false") + "}");
 }
 
 void setAnimationMode(int mode) {
   animationMode = mode;
   brightnessLevel = 255;
   animationTimer = millis();
+  cleared = false;  // 重置清空狀態以顯示動畫
   
   // 重設色彩相關變數
   currentColorIndex = 0;
@@ -688,31 +912,100 @@ void setAnimationMode(int mode) {
   Serial.print("📺 模式切換: ");
   
   switch(mode) {
-    case 0: Serial.println("彩虹循環"); break;
-    case 1: Serial.println("隨機閃爍"); break;
-    case 2: Serial.println("呼吸燈"); break;
-    case 3: Serial.println("跑馬燈"); break;
+    case MODE_RAINBOW: Serial.println("彩虹循環"); break;
+    case MODE_FLASH: Serial.println("隨機閃爍"); break;
+    case MODE_BREATH: Serial.println("呼吸燈"); break;
+    case MODE_CHASE: Serial.println("跑馬燈"); break;
+    case MODE_CYLON: Serial.println("Cylon"); break;
+    case MODE_FIRE: Serial.println("Fire2012"); break;
+    case MODE_NOISE: Serial.println("Noise Wave"); break;
+    case MODE_PACIFICA: Serial.println("Pacifica"); break;
+    case MODE_PRIDE: Serial.println("Pride2015"); break;
+    case MODE_TWINKLE: Serial.println("TwinkleFox"); break;
+    case MODE_DEMO_RAINBOW: Serial.println("Demo: Rainbow"); break;
+    case MODE_DEMO_GLITTER: Serial.println("Demo: Rainbow+Glitter"); break;
+    case MODE_DEMO_CONFETTI: Serial.println("Demo: Confetti"); break;
+    case MODE_DEMO_SINELON: Serial.println("Demo: Sinelon"); break;
+    case MODE_DEMO_JUGGLE: Serial.println("Demo: Juggle"); break;
+    case MODE_DEMO_BPM: Serial.println("Demo: BPM"); break;
   }
 }
 
 void handleVibration() {
   resetIdleTimer();
   Serial.println("✨ 偵測到震動！");
-  animationMode = (animationMode + 1) % 4;
+  animationMode = (animationMode + 1) % MODE_COUNT;
   brightnessLevel = 255;
   animationTimer = millis();
 }
 
 void updateAnimation() {
-  if (animationMode == 0) {
-    rainbowCycle(255);
-  } else if (animationMode == 1) {
-    randomFlash();
-  } else if (animationMode == 2) {
-    // 呼吸燈模式：平滑呼吸，每 3 個完整循環換色
-    breathingLight();
-  } else if (animationMode == 3) {
-    chaseAnimation();
+  if (cleared && !manualMode) {
+    // 如果已清空且不在手動模式，保持LED關閉
+    FastLED.show();
+    return;
+  }
+  
+  switch(animationMode) {
+    case MODE_RAINBOW:
+      rainbowCycle(255);
+      break;
+    case MODE_FLASH:
+      randomFlash();
+      break;
+    case MODE_BREATH:
+      // 呼吸燈模式：平滑呼吸，每 3 個完整循環換色
+      breathingLight();
+      break;
+    case MODE_CHASE:
+      chaseAnimation();
+      break;
+    case MODE_CYLON:
+      cylon.draw(fl::Fx::DrawContext(millis(), leds));
+      break;
+    case MODE_FIRE:
+      fire2012.draw(fl::Fx::DrawContext(millis(), leds));
+      break;
+    case MODE_NOISE:
+      noiseWave.draw(fl::Fx::DrawContext(millis(), leds));
+      break;
+    case MODE_PACIFICA:
+      pacifica.draw(fl::Fx::DrawContext(millis(), leds));
+      break;
+    case MODE_PRIDE:
+      pride2015.draw(fl::Fx::DrawContext(millis(), leds));
+      break;
+    case MODE_TWINKLE:
+      twinklefox.draw(fl::Fx::DrawContext(millis(), leds));
+      break;
+    case MODE_DEMO_RAINBOW:
+      demoHue++;
+      demoRainbow();
+      break;
+    case MODE_DEMO_GLITTER:
+      demoHue++;
+      demoRainbowGlitter();
+      break;
+    case MODE_DEMO_CONFETTI:
+      demoHue++;
+      demoConfetti();
+      break;
+    case MODE_DEMO_SINELON:
+      demoHue++;
+      demoSinelon();
+      break;
+    case MODE_DEMO_JUGGLE:
+      demoHue++;
+      demoJuggle();
+      break;
+    case MODE_DEMO_BPM:
+      demoHue++;
+      demoBpm();
+      break;
+    default:
+      // unknown mode, just clear
+      FastLED.clear();
+      break;
   }
 }
 
@@ -784,16 +1077,50 @@ void chaseAnimation() {
   if (position > 2) leds[position - 3] = CRGB(chaseColor.r / 8, chaseColor.g / 8, chaseColor.b / 8);
 }
 
-void colorPulse(CRGB color, uint8_t brightness) {
-  static uint8_t pulseValue = 0;
-  pulseValue += 5;
-  
-  uint8_t fade = sin8(pulseValue);
-  uint8_t finalBrightness = (brightness * fade) / 255;
-  
-  for (int i = 0; i < NUM_LEDS; i++) {
-    leds[i] = color;
-    leds[i].nscale8(finalBrightness);
+// --- demo pattern implementations ---
+
+void demoRainbow() {
+  fill_rainbow(leds, NUM_LEDS, demoHue, 7);
+}
+
+void addDemoGlitter(uint8_t chance) {
+  if (random8() < chance) {
+    leds[random16(NUM_LEDS)] += CRGB::White;
+  }
+}
+
+void demoRainbowGlitter() {
+  demoRainbow();
+  addDemoGlitter(80);
+}
+
+void demoConfetti() {
+  fadeToBlackBy(leds, NUM_LEDS, 10);
+  int pos = random16(NUM_LEDS);
+  leds[pos] += CHSV(demoHue + random8(64), 200, 255);
+}
+
+void demoSinelon() {
+  fadeToBlackBy(leds, NUM_LEDS, 20);
+  int pos = beatsin16(13, 0, NUM_LEDS - 1);
+  leds[pos] += CHSV(demoHue, 255, 192);
+}
+
+void demoJuggle() {
+  fadeToBlackBy(leds, NUM_LEDS, 20);
+  uint8_t dothue = 0;
+  for (uint8_t i = 0; i < 8; i++) {
+    leds[beatsin16(i + 7, 0, NUM_LEDS - 1)] |= CHSV(dothue, 200, 255);
+    dothue += 32;
+  }
+}
+
+void demoBpm() {
+  uint8_t BeatsPerMinute = 62;
+  CRGBPalette16 palette = PartyColors_p;
+  uint8_t beat = beatsin8(BeatsPerMinute, 64, 255);
+  for (uint16_t i = 0; i < NUM_LEDS; i++) {
+    leds[i] = ColorFromPalette(palette, demoHue + (i * 2), beat - demoHue + (i * 10));
   }
 }
 
